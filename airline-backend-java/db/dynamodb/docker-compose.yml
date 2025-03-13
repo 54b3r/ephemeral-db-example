@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  dynamodb-local:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dynamodb-local
+    ports:
+      - "8000:8000"
+    environment:
+      AWS_ACCESS_KEY_ID: local
+      AWS_SECRET_ACCESS_KEY: local
+      AWS_REGION: us-east-1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

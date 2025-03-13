@@ -1,0 +1,54 @@
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/pgair}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 2
+      connection-timeout: 20000
+      initialization-fail-timeout: 30000
+  jpa:
+    hibernate:
+      ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO:validate}
+    show-sql: ${SPRING_JPA_SHOW_SQL:false}
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc:
+          time_zone: UTC
+        globally_quoted_identifiers: false
+        physical_naming_strategy: org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
+
+aws:
+  dynamodb:
+    endpoint: ${AWS_DYNAMODB_ENDPOINT:http://localhost:8000}
+  access-key-id: ${AWS_ACCESS_KEY_ID:local}
+  secret-access-key: ${AWS_SECRET_ACCESS_KEY:local}
+  region: ${AWS_REGION:us-east-1}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: ${MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE:health,info}
+  endpoint:
+    health:
+      probes:
+        enabled: ${MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED:true}
+      show-details: always
+      group:
+        readiness:
+          include: db,diskSpace
+  health:
+    livenessstate:
+      enabled: ${MANAGEMENT_HEALTH_LIVENESSSTATE_ENABLED:true}
+    readinessstate:
+      enabled: ${MANAGEMENT_HEALTH_READINESSSTATE_ENABLED:true}
+
+logging:
+  level:
+    com.example.airline: INFO
+    org.hibernate.SQL: INFO
+    com.zaxxer.hikari: INFO
