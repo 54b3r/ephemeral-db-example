@@ -16,6 +16,7 @@ WAIT_TIME=30
 INSTALL_DEPS=false
 OS="Unknown"
 DISTRO="Unknown"
+IS_WSL=false
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -69,21 +70,33 @@ detect_os() {
       if [ -f /etc/os-release ]; then
         . /etc/os-release
         DISTRO=$NAME
+        
+        # Check for WSL
+        if grep -qi microsoft /proc/version 2>/dev/null; then
+          IS_WSL=true
+          echo -e "${CYAN}Detected Windows Subsystem for Linux (WSL)${NC}"
+        else
+          IS_WSL=false
+        fi
       else
         DISTRO="Unknown Linux"
+        IS_WSL=false
       fi
       ;;
     Darwin*)    
       OS="macOS"
       DISTRO=$(sw_vers -productVersion)
+      IS_WSL=false
       ;;
     CYGWIN*|MINGW*|MSYS*)
       OS="Windows"
       DISTRO="Windows"
+      IS_WSL=false
       ;;
     *)          
       OS="Unknown"
       DISTRO="Unknown"
+      IS_WSL=false
       ;;
   esac
   
@@ -101,31 +114,53 @@ install_docker() {
   
   case "$OS" in
     Linux)
-      case "$DISTRO" in
-        Ubuntu*|Debian*)
-          echo -e "${CYAN}Installing Docker on Ubuntu/Debian...${NC}"
-          sudo apt-get update
-          sudo apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release
-          curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
-          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-          sudo apt-get update
-          sudo apt-get install -y docker-ce docker-ce-cli containerd.io
-          sudo usermod -aG docker $USER
-          ;;
-        CentOS*|Red*)
-          echo -e "${CYAN}Installing Docker on CentOS/RHEL...${NC}"
-          sudo yum install -y yum-utils
-          sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
-          sudo yum install -y docker-ce docker-ce-cli containerd.io
-          sudo systemctl start docker
-          sudo systemctl enable docker
-          sudo usermod -aG docker $USER
-          ;;
-        *)
-          echo -e "${RED}✘ Unsupported Linux distribution. Please install Docker manually: https://docs.docker.com/engine/install/${NC}"
-          return 1
-          ;;
-      esac
+      if $IS_WSL; then
+        echo -e "${CYAN}Installing Docker in WSL environment...${NC}"
+        echo -e "${YELLOW}Note: For WSL, Docker Desktop for Windows is recommended${NC}"
+        echo -e "${YELLOW}Installing Docker Engine in WSL...${NC}"
+        
+        # WSL-specific Docker installation
+        sudo apt-get update
+        sudo apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+        echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+        sudo apt-get update
+        sudo apt-get install -y docker-ce docker-ce-cli containerd.io
+        
+        # Add user to docker group
+        sudo usermod -aG docker $USER
+        
+        # WSL-specific instructions
+        echo -e "${YELLOW}For WSL, you may need to start the Docker service manually:${NC}"
+        echo -e "${YELLOW}sudo service docker start${NC}"
+        echo -e "${YELLOW}Or consider using Docker Desktop for Windows with WSL integration enabled${NC}"
+      else
+        case "$DISTRO" in
+          Ubuntu*|Debian*)
+            echo -e "${CYAN}Installing Docker on Ubuntu/Debian...${NC}"
+            sudo apt-get update
+            sudo apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release
+            curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+            echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+            sudo apt-get update
+            sudo apt-get install -y docker-ce docker-ce-cli containerd.io
+            sudo usermod -aG docker $USER
+            ;;
+          CentOS*|Red*)
+            echo -e "${CYAN}Installing Docker on CentOS/RHEL...${NC}"
+            sudo yum install -y yum-utils
+            sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+            sudo yum install -y docker-ce docker-ce-cli containerd.io
+            sudo systemctl start docker
+            sudo systemctl enable docker
+            sudo usermod -aG docker $USER
+            ;;
+          *)
+            echo -e "${RED}✘ Unsupported Linux distribution. Please install Docker manually: https://docs.docker.com/engine/install/${NC}"
+            return 1
+            ;;
+        esac
+      fi
       ;;
     macOS)
       echo -e "${CYAN}Installing Docker Desktop for Mac...${NC}"
@@ -141,6 +176,7 @@ install_docker() {
     Windows)
       echo -e "${CYAN}Installing Docker Desktop for Windows...${NC}"
       echo -e "${YELLOW}Please download and install Docker Desktop from: https://www.docker.com/products/docker-desktop${NC}"
+      echo -e "${YELLOW}Make sure to enable WSL integration in Docker Desktop settings if using WSL.${NC}"
       return 1
       ;;
     *)
@@ -423,6 +459,34 @@ setup_infrastructure() {
   fi
   
   echo -e "\n${BLUE}Setting up infrastructure...${NC}"
+  
+  # Check if Docker is running
+  if ! docker info > /dev/null 2>&1; then
+    echo -e "${RED}✘ Docker is not running.${NC}"
+    
+    if $IS_WSL; then
+      echo -e "${YELLOW}Attempting to start Docker in WSL environment...${NC}"
+      if command_exists service; then
+        sudo service docker start
+        sleep 2
+        if ! docker info > /dev/null 2>&1; then
+          echo -e "${RED}✘ Failed to start Docker service.${NC}"
+          echo -e "${YELLOW}For WSL, you may need to:${NC}"
+          echo -e "${YELLOW}1. Install Docker Desktop for Windows${NC}"
+          echo -e "${YELLOW}2. Enable WSL integration in Docker Desktop settings${NC}"
+          echo -e "${YELLOW}3. Restart your WSL terminal${NC}"
+          exit 1
+        fi
+      else
+        echo -e "${RED}✘ Cannot start Docker service automatically in this WSL environment.${NC}"
+        echo -e "${YELLOW}Please ensure Docker Desktop for Windows is installed with WSL integration enabled.${NC}"
+        exit 1
+      fi
+    else
+      echo -e "${RED}✘ Please start Docker and try again.${NC}"
+      exit 1
+    fi
+  fi
   
   # Check if containers are already running
   if docker ps | grep -q "pgair-db"; then
